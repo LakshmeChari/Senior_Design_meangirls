@@ -8,15 +8,12 @@ servo = Servo(17, min_pulse_width = 0.0005, max_pulse_width = 0.0025,
 
 discharge_time = 2 # Valve open time, measured in seconds
 TES_idle_time = 2 #Valve closed time, measured in seconds
-
-
-
-    
     
 servo.value = -0.42
-sleep(5)
+sleep(discharge_time)
 servo.value = 0.37
-sleep(5)
+sleep(TES_idle_time)
+
 #print("Position at", servo.value)
 #sleep(5)
 #servo.max()
