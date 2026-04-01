@@ -1,0 +1,209 @@
+import os
+import glob
+import time
+from enum import IntEnum
+import RPi.GPIO as GPIO
+
+# =========================
+# 1. LOAD 1-WIRE DRIVERS
+# =========================
+os.system('modprobe w1-gpio')
+os.system('modprobe w1-therm')
+
+base_dir = '/sys/bus/w1/devices/'
+device_folders = glob.glob(base_dir + '28*')
+
+# Map sensor IDs → meaning
+SENSOR_MAP = {
+    "28-xxxxxxxxxxxx": "room",   # replace with your actual IDs
+    "28-yyyyyyyyyyyy": "tank",
+}
+
+# =========================
+# 2. STATE DEFINITIONS
+# =========================
+class AHUState(IntEnum):
+    IDLE = 0
+    NORMAL = 1
+    VENT = 2
+
+class TESState(IntEnum):
+    IDLE = 0
+    CHARGING = 1
+    DISCHARGE = 2
+
+# =========================
+# 3. GPIO SETUP
+# =========================
+RELAY_PIN_SOLENOID = 23
+RELAY_PIN_FAN = 24
+RELAY_PIN_PUMP = 17
+RELAY_PIN_HEATER = 27
+
+ACTIVE_HIGH = {
+    "solenoid": False,
+    "fan": True,
+    "pump": True,
+    "heater": True,
+}
+
+def relay_level(device_name, command_on):
+    if ACTIVE_HIGH[device_name]:
+        return GPIO.HIGH if command_on else GPIO.LOW
+    else:
+        return GPIO.LOW if command_on else GPIO.HIGH
+
+def setup_gpio():
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setwarnings(False)
+
+    GPIO.setup(RELAY_PIN_SOLENOID, GPIO.OUT)
+    GPIO.setup(RELAY_PIN_FAN, GPIO.OUT)
+    GPIO.setup(RELAY_PIN_PUMP, GPIO.OUT)
+    GPIO.setup(RELAY_PIN_HEATER, GPIO.OUT)
+
+    set_outputs(False, False, False, False)
+
+def set_outputs(valve, blower, pump, heater):
+    GPIO.output(RELAY_PIN_SOLENOID, relay_level("solenoid", valve))
+    GPIO.output(RELAY_PIN_FAN, relay_level("fan", blower))
+    GPIO.output(RELAY_PIN_PUMP, relay_level("pump", pump))
+    GPIO.output(RELAY_PIN_HEATER, relay_level("heater", heater))
+
+# =========================
+# 4. SENSOR READING
+# =========================
+def read_temp(device_file):
+    try:
+        with open(device_file, 'r') as f:
+            lines = f.readlines()
+
+        retry = 0
+        while lines[0].strip()[-3:] != 'YES':
+            time.sleep(0.2)
+            with open(device_file, 'r') as f:
+                lines = f.readlines()
+            retry += 1
+            if retry > 5:
+                return None
+
+        equals_pos = lines[1].find('t=')
+        if equals_pos != -1:
+            temp_c = float(lines[1][equals_pos+2:]) / 1000.0
+            return temp_c
+
+    except:
+        return None
+
+def read_all_sensors():
+    sensor_data = {}
+
+    for folder in device_folders:
+        device_id = folder.split('/')[-1]
+        temp = read_temp(folder + '/w1_slave')
+
+        if temp is not None and device_id in SENSOR_MAP:
+            sensor_data[SENSOR_MAP[device_id]] = temp
+
+    return sensor_data
+
+# =========================
+# 5. DECISION FSM
+# =========================
+def tes_ahu_simple(T_amb, T_des, T_tank, peak):
+    T_low = 40
+    T_full = 60
+
+    need_heat = T_amb < T_des
+    tank_low = T_tank <= T_low
+    tank_full = T_tank >= T_full
+
+    if need_heat:
+        if peak:
+            if not tank_low:
+                return AHUState.VENT, TESState.DISCHARGE, 1
+            else:
+                return AHUState.NORMAL, TESState.IDLE, 2
+        else:
+            if not tank_full:
+                return AHUState.NORMAL, TESState.CHARGING, 3
+            else:
+                return AHUState.NORMAL, TESState.IDLE, 4
+    else:
+        if peak:
+            return AHUState.IDLE, TESState.IDLE, 5
+        else:
+            if not tank_full:
+                return AHUState.IDLE, TESState.CHARGING, 6
+            else:
+                return AHUState.IDLE, TESState.IDLE, 7
+
+# =========================
+# 6. ACTUATION FSM
+# =========================
+def actuation_fsm(ahu, tes):
+    valve = False
+    blower = False
+    pump = False
+    heater = False
+
+    if tes == TESState.CHARGING:
+        heater = True
+        pump = True   # circulate while heating
+
+    elif tes == TESState.DISCHARGE:
+        valve = True
+        pump = True
+
+    if ahu != AHUState.IDLE:
+        blower = True
+
+    return valve, blower, pump, heater
+
+# =========================
+# 7. MAIN LOOP
+# =========================
+def main():
+    setup_gpio()
+
+    T_des = 24  # desired temp
+
+    try:
+        while True:
+            sensors = read_all_sensors()
+
+            if "room" not in sensors or "tank" not in sensors:
+                print("⚠️ Missing sensor data")
+                time.sleep(1)
+                continue
+
+            T_amb = sensors["room"]
+            T_tank = sensors["tank"]
+            T_des= 25
+            peak = 1  # replace later with real logic
+
+            ahu, tes, case = tes_ahu_simple(T_amb, T_des, T_tank, peak)
+            valve, blower, pump, heater = actuation_fsm(ahu, tes)
+
+            # SAFETY LIMIT
+            if T_tank > 70:
+                heater = False
+
+            set_outputs(valve, blower, pump, heater)
+
+            print("===================================")
+            print(f"T_room={T_amb:.2f}°C | T_tank={T_tank:.2f}°C")
+            print(f"AHU={ahu.name} | TES={tes.name} | Case={case}")
+            print(f"Valve={valve}, Blower={blower}, Pump={pump}, Heater={heater}")
+
+            time.sleep(1)
+
+    except KeyboardInterrupt:
+        print("Stopping system")
+
+    finally:
+        set_outputs(False, False, False, False)
+        GPIO.cleanup()
+
+if __name__ == "__main__":
+    main()
