@@ -114,7 +114,7 @@ def change_temp(delta):
     
     new = min(max(target_temp.get() + delta, 15), 30)
     target_temp.set(new)
-    slider.set(new)
+ #   slider.set(new)
     update_target_display()
   #  FSM_code.set_desired_temperature(new) #pushes code to FSM
     
@@ -132,6 +132,9 @@ def set_mode(selected):
  #       target_temp.set(auto_temp)
  #      slider.set(auto_temp)
  #      update_target_display()
+ 
+    # THIS PART CONTROLS SLIDER INTERACTION
+  
         
         
 def toggle_fan():
@@ -199,21 +202,21 @@ tk.Label(target_card, text="TARGET TEMPERATURE",
 target_label = tk.Label(target_card,
                         fg=TEXT, bg=CARD,
                         font=("Helvetica", 28, "bold"))
-target_label.place(x=250, y=40)
+target_label.place(x=250, y=60)
 
 tk.Button(target_card, text="−", width=4, relief="flat",
           bg=INACTIVE, fg=TEXT,
-          command=lambda: change_temp(-0.5)).place(x=160, y=50)
+          command=lambda: change_temp(-0.5)).place(x=160, y=70)
 
 tk.Button(target_card, text="+", width=4, relief="flat",
           bg=INACTIVE, fg=TEXT,
-          command=lambda: change_temp(0.5)).place(x=420, y=50)
+          command=lambda: change_temp(0.5)).place(x=420, y=70)
 
-slider = ttk.Scale(target_card, from_=15, to=30,
-                   orient="horizontal", length=460,
-                   command=update_target)
-slider.set(22.0)
-slider.place(x=70, y=100)
+#slider = ttk.Scale(target_card, from_=15, to=30,
+              #     orient="horizontal", length=460,
+              #     command=update_target)
+#slider.set(22.0)
+#slider.place(x=70, y=100)
 
 update_target_display()
 
