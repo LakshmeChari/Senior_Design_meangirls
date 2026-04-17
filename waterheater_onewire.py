@@ -33,8 +33,10 @@ HEATER_OFF = GPIO.LOW
 
 # Replace with your actual 1-wire IDs
 SENSOR_MAP = {
-    "28-aaaaaaaaaaaa": "inlet_water_heater",
-    "28-bbbbbbbbbbbb": "outlet_water_heater",
+    "28-00000034c7d5": "inlet_HEX",
+    "28-00000037e0c4": "outlet_HEX",
+    "28-00000037009c": "outlet_water_heater",
+    "28-0000005b080d": "inlet_waterh_heater",
 }
 
 # =========================================================
