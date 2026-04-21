@@ -1,5 +1,7 @@
 import sys
 import pandas as pd
+import matplotlib
+matplotlib.use('Qt5Agg')  # Forces Matplotlib to use the Qt framework
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from datetime import datetime
