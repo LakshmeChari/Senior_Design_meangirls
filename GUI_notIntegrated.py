@@ -171,7 +171,7 @@ class DashboardWidget(QtWidgets.QWidget):
         self.date_lbl = QtWidgets.QLabel(self); self.date_lbl.setGeometry(20, 15, 250, 25)
         self.date_lbl.setStyleSheet("color: white; font-size: 14px; background: transparent;")
         self.time_lbl = QtWidgets.QLabel(self); self.time_lbl.setGeometry(0, 15, W, 25); self.time_lbl.setAlignment(QtCore.Qt.AlignCenter); self.time_lbl.setStyleSheet("color: white; font-size: 14px; background: transparent;")
-        self.peak_btn = QtWidgets.QPushButton("PEAK", self); self.peak_btn.setGeometry(W - 130, 15, 110, 25); self.peak_btn.clicked.connect(self.p.toggle_peak); self.peak_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        self.peak_btn = QtWidgets.QPushButton("PEAK", self); self.peak_btn.setGeometry(W - 130, 15, 110, 25); self.peak_btn.clicked.connect(self.p.toggle_peak)
         self.main_title = QtWidgets.QLabel("DC HOUSE THERMOSTAT", self); self.main_title.setGeometry(0, 50, W, 40); self.main_title.setAlignment(QtCore.Qt.AlignCenter); self.main_title.setStyleSheet("color: rgb(170, 255, 127); font-size: 24px; font-weight: bold;")
         self.l_ctrl = QtWidgets.QLabel("CONTROL MODE", self); self.l_ctrl.setGeometry(30, 110, 150, 20); self.l_ctrl.setStyleSheet(lbl_style)
         self.l_sys = QtWidgets.QLabel("SYSTEM MODE", self); self.l_sys.setGeometry(30, 230, 150, 20); self.l_sys.setStyleSheet(lbl_style)
@@ -212,13 +212,21 @@ class DashboardWidget(QtWidgets.QWidget):
         avg_scale = ((self.width() / 820) + (self.height() / 480)) / 2
         self.temp_val_btn.setText(self.p.format_temp(self.p.set_temp_c))
         
-        # RESTORED to your original format
         self.curr_text.setText(f"Currently {self.p.format_temp(self.p.current_temp_c)}")
         
-        color = "#FF5050" if self.p.peak_state else "#AAFF7F"
-        self.peak_btn.setText("PEAK" if self.p.peak_state else "OFF-PEAK")
-        self.peak_btn.setStyleSheet(f"color: {color}; font-size: {int(14 * avg_scale)}px; font-weight: bold; background: transparent; border: none; text-align: right;")
         is_smart = self.btn_ctrl.text() == "SMART"
+        peak_color = "#FF5050" if self.p.peak_state else "#AAFF7F"
+        
+        # PEAK Button logic - Only hover if NOT smart
+        if is_smart:
+            self.peak_btn.setStyleSheet(f"color: {peak_color}; font-size: {int(14 * avg_scale)}px; font-weight: bold; background: transparent; border: none; text-align: right;")
+            self.peak_btn.setCursor(QtCore.Qt.ArrowCursor)
+        else:
+            self.peak_btn.setStyleSheet(f"QPushButton {{ color: {peak_color}; font-size: {int(14 * avg_scale)}px; font-weight: bold; background: transparent; border: none; text-align: right; }} QPushButton:hover {{ color: white; }}")
+            self.peak_btn.setCursor(QtCore.Qt.PointingHandCursor)
+
+        self.peak_btn.setText("PEAK" if self.p.peak_state else "OFF-PEAK")
+
         pill_style_base = f"background: transparent; color: rgb(110, 150, 200); border: 2px solid rgb(70, 100, 140); border-radius: {int(20*avg_scale)}px; font-size: {int(24*avg_scale)}px;"
         if is_smart:
             final_style = f"QPushButton {{ {pill_style_base} }}"
@@ -278,12 +286,28 @@ class ThermostatApp(QtWidgets.QMainWindow):
     def global_update(self):
         self.current_temp_c = read_smtc_temp()
         self.tank_temp_c = read_one_wire_temp()
+        
+        if self.page1.btn_ctrl.text() == "SMART":
+            now = datetime.now()
+            day_idx = now.weekday()
+            current_hour = now.hour
+            s_start, s_end = self.page3.spinners[day_idx]
+            if s_start.value <= current_hour < s_end.value:
+                self.peak_state = True
+            else:
+                self.peak_state = False
+                
         self.page1.update_ui_elements()
         self.page2.update_live_data(self.current_temp_c, self.tank_temp_c, self.set_temp_c)
 
     def make_page_changer(self, index): return lambda: self.pages.setCurrentIndex(index)
     def toggle_units(self): self.is_celsius = not self.is_celsius; self.page1.update()
-    def toggle_peak(self): self.peak_state = not self.peak_state; self.page1.update()
+    
+    def toggle_peak(self): 
+        if self.page1.btn_ctrl.text() != "SMART":
+            self.peak_state = not self.peak_state
+            self.page1.update()
+            
     def inc_temp(self):
         if self.page1.btn_ctrl.text() != "SMART": self.set_temp_c = min(self.max_temp_c, self.set_temp_c + 1); self.page1.update()
     def dec_temp(self):
